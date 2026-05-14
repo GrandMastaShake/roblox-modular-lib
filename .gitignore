@@ -1,0 +1,19 @@
+# Rojo / Wally toolchain
+Packages/
+sourcemap.json
+*.lock
+rojo_serve.log
+
+# Roblox Studio runtime files
+*.rbxlx.lock
+
+# Selene cache
+.selene/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

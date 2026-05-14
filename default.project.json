@@ -1,0 +1,34 @@
+{
+  "name": "FashionistaPetGame",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "src": {
+        "$path": "src"
+      },
+      "Tests": {
+        "$className": "Folder",
+        "$path": "tests"
+      },
+      "PetGame": {
+        "$path": "PetGame.server.lua"
+      },
+      "ExampleGame": {
+        "$path": "ExampleGame.server.lua"
+      },
+      "TradeSmoke": {
+        "$path": "TradeSmoke.server.lua"
+      },
+      "ExampleWorld": {
+        "$path": "examples/ExampleWorld.server.lua"
+      },
+      "AdoptMeStudioTest": {
+        "$path": "AdoptMeStudioTest.server.lua"
+      },
+      "AdoptMeDemo": {
+        "$path": "examples/AdoptMeDemo.server.lua"
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+# Normalize line endings to LF in the repo; checkout as-is on all platforms
+* text=auto eol=lf
+
+# Roblox place file — treat as binary to avoid diff noise
+*.rbxlx binary
+*.rbxm  binary
+*.rbxmx binary
