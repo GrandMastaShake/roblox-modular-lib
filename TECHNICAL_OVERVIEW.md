@@ -62,6 +62,31 @@ bus:Subscribe("EggHatched", function(data) ... end)
 | `LODUpdate` | Game loop | LODSystem |
 | `PlayerJoined` | Game script | PetSystem, HomeSystem, VehicleSystem, QuestSystem, SaveSystem |
 
+### Event Naming Convention
+
+All events follow a `PascalCase` noun-verb pattern grouped by domain. The convention
+is `<Subject><Action>` — never generic names like `"update"` or `"changed"`.
+
+| Domain prefix | Examples |
+|---|---|
+| **Pet** | `EggHatched`, `PetFed`, `PetPlayed`, `PetAgedUp`, `NeonCreated`, `PetOwnershipTransferred` |
+| **Trade** | `TradeRequested`, `TradeAccepted`, `TradeConfirmed`, `TradeCompleted`, `TradeCancelled` |
+| **Currency** | `CurrencyAdded`, `CurrencySubtracted`, `CurrencyBalanceChanged`, `TransactionLogged` |
+| **Quest** | `QuestAccepted`, `QuestProgressUpdated`, `QuestCompleted`, `QuestFailed` |
+| **XP** | `XPAdded`, `LevelUp`, `XPBarUpdated` |
+| **Inventory** | `ItemAdded`, `ItemRemoved`, `ItemEquipped`, `InventoryFull` |
+| **Weather** | `WeatherChanged`, `WeatherTransitioning` |
+| **Home** | `FurniturePlaced`, `FurnitureRemoved`, `HomeUpgraded` |
+| **System** | `WorldSaved`, `ChunkSaved`, `AutoSaveTriggered`, `PlayerJoined` |
+
+**Rules:**
+- New events must use `PascalCase` and fit an existing domain prefix or introduce a new one
+- Payload fields use `camelCase` (`instanceId`, `oldStage`, `newStage`)
+- Never reuse an existing event name for a different payload shape — bump the name instead
+- Subscribe handles returned by `bus:Subscribe()` should be stored and disconnected in `Destroy()`
+
+---
+
 ### `--!strict` Type Safety
 All modules are written in strict Luau. Every public API has exported `type` declarations
 so callers get autocomplete and type errors at edit time rather than runtime.

@@ -1,9 +1,26 @@
 --!strict
 -- CurrencySystem.lua
 -- Multiple currencies, transactions, and balances.
+--
+-- ZERO HARD-COUPLING: all dependencies are inline structural types.
+-- No module-scope require() — drop this file into any project without
+-- pulling in the full Core package.
 
-local EventBus = require(script.Parent.Core.EventBus)
-local Config = require(script.Parent.Core.Config)
+-- ── Inline structural types ──────────────────────────────────────────────────
+
+type EventBus = {
+	Emit: (self: EventBus, eventName: string, payload: any) -> (),
+}
+
+type Config = {
+	Get: (self: Config, key: string, default: any) -> any,
+}
+
+local function _defaultConfig(): Config
+	return { Get = function(_s, _k, default) return default end } :: Config
+end
+
+-- ── Module ───────────────────────────────────────────────────────────────────
 
 local CurrencySystem = {}
 CurrencySystem.__index = CurrencySystem
@@ -34,17 +51,17 @@ export type CurrencySystem = {
 	GetHistory: (self: CurrencySystem, currencyId: string, limit: number?) -> { CurrencyTransaction },
 
 	-- Private
-	_eventBus: EventBus.EventBus,
-	_config: Config.Config,
+	_eventBus: EventBus,
+	_config: Config,
 	_currencies: { [string]: CurrencyDef },
 	_balances: { [string]: number },
 	_history: { [string]: { CurrencyTransaction } },
 }
 
-function CurrencySystem.new(eventBus: EventBus.EventBus, config: Config.Config?): CurrencySystem
+function CurrencySystem.new(eventBus: EventBus, config: Config?): CurrencySystem
 	local self = setmetatable({}, CurrencySystem) :: CurrencySystem
 	self._eventBus = eventBus
-	self._config = config or Config.new()
+	self._config = config or _defaultConfig()
 	self._currencies = {}
 	self._balances = {}
 	self._history = {}

@@ -1,9 +1,10 @@
 --!strict
 --[[
-    SaveSystem v1.1.0
-    Persistent world-state saving via an injected DataStore (DataStoreSafe or raw DataStoreService).
-    The `dataStore` dep must expose :SetAsync(key, data) and :GetAsync(key) — either a raw
-    DataStore or a DataStoreSafe wrapper works.
+    SaveSystem v1.2.0
+    Persistent world-state saving via an injected DataStore.
+    Uses UpdateAsync (atomic, safe under concurrent server writes) for all saves.
+    GetAsync is used for loads. The injected `dataStore` must expose both methods —
+    a raw DataStore or a DataStoreSafe wrapper both qualify.
 --]]
 
 local SaveSystem = {}
@@ -64,12 +65,17 @@ end
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
-local function _safeSet(ds: any, key: string, data: any): boolean
+-- UpdateAsync is atomic under concurrent server access — safer than SetAsync.
+-- The transform function always returns the new data, ignoring the old value
+-- (last-write-wins per key, which is correct for chunk and world snapshots).
+local function _safeUpdate(ds: any, key: string, data: any): boolean
     local ok, err = pcall(function()
-        ds:SetAsync(key, data)
+        ds:UpdateAsync(key, function(_old: any)
+            return data
+        end)
     end)
     if not ok then
-        warn("[SaveSystem] SetAsync failed for key '" .. key .. "': " .. tostring(err))
+        warn("[SaveSystem] UpdateAsync failed for key '" .. key .. "': " .. tostring(err))
     end
     return ok
 end
@@ -97,7 +103,7 @@ function SaveSystem:SaveWorld(worldData: WorldData): boolean
             version    = SAVE_VERSION,
         },
     }
-    local ok = _safeSet(self._dataStore, KEY_WORLD, payload)
+    local ok = _safeUpdate(self._dataStore, KEY_WORLD, payload)
     if ok then
         self._metadata.lastSaved = os.time()
         self._eventBus:Emit("WorldSaved", worldData)
@@ -114,7 +120,7 @@ end
 
 function SaveSystem:SaveChunk(chunk: ChunkData): boolean
     local key = string.format(KEY_CHUNK, chunk.cx, chunk.cz)
-    local ok = _safeSet(self._dataStore, key, chunk)
+    local ok = _safeUpdate(self._dataStore, key, chunk)
     if ok then
         self._saveQueue[string.format("%d_%d", chunk.cx, chunk.cz)] = nil
         self._eventBus:Emit("ChunkSaved", chunk)
