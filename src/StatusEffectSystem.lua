@@ -61,7 +61,10 @@ function StatusEffectSystem.new(eventBus: EventBus.EventBus): StatusEffectSystem
 				if now >= active.expiresAt then
 					local def = self._definitions[effectId]
 					if def and def.onRemove then
-						def.onRemove(targetId, active.stacks)
+						local cbOk, cbErr = pcall(def.onRemove, targetId, active.stacks)
+						if not cbOk then
+							warn("[StatusEffectSystem] onRemove error for '" .. effectId .. "': " .. tostring(cbErr))
+						end
 					end
 					self._eventBus:Emit("EffectExpired", {
 						effectId = effectId,
@@ -75,7 +78,10 @@ function StatusEffectSystem.new(eventBus: EventBus.EventBus): StatusEffectSystem
 					if def and def.tickInterval and def.tickInterval > 0 and active.nextTickAt and now >= active.nextTickAt then
 						active.nextTickAt = now + def.tickInterval
 						if def.onTick then
-							def.onTick(targetId, active.stacks)
+							local cbOk, cbErr = pcall(def.onTick, targetId, active.stacks)
+							if not cbOk then
+								warn("[StatusEffectSystem] onTick error for '" .. effectId .. "': " .. tostring(cbErr))
+							end
 						end
 						self._eventBus:Emit("EffectTick", {
 							effectId = effectId,
@@ -150,7 +156,10 @@ function StatusEffectSystem:Apply(
 		}
 
 		if def.onApply then
-			def.onApply(targetId, self._active[targetId][effectId].stacks)
+			local cbOk, cbErr = pcall(def.onApply, targetId, self._active[targetId][effectId].stacks)
+			if not cbOk then
+				warn("[StatusEffectSystem] onApply error for '" .. effectId .. "': " .. tostring(cbErr))
+			end
 		end
 
 		self._eventBus:Emit("EffectApplied", {

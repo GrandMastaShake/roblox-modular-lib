@@ -64,6 +64,7 @@ export type OwnedPet = {
     defId:         string,
     name:          string,
     rarity:        PetRarity,
+    ownerId:       number,
     stage:         PetStage,
     xp:            number,
     mood:          PetMood,
@@ -122,6 +123,10 @@ export type PetSystem = {
     Serialize:   (self: PetSystem, userId: number?) -> { OwnedPet },
     Deserialize: (self: PetSystem, data: { OwnedPet }) -> (),
 
+    -- Ownership (for multi-player / trading)
+    OwnsPet:          (self: PetSystem, ownerId: number, instanceId: string) -> boolean,
+    TransferOwnership:(self: PetSystem, instanceId: string, newOwnerId: number) -> boolean,
+
     -- Cleanup
     Destroy: (self: PetSystem) -> (),
 
@@ -169,6 +174,7 @@ local function _deepCopyPet(pet: OwnedPet): OwnedPet
         defId          = pet.defId,
         name           = pet.name,
         rarity         = pet.rarity,
+        ownerId        = pet.ownerId,
         stage          = pet.stage,
         xp             = pet.xp,
         mood           = pet.mood,
@@ -350,6 +356,7 @@ function PetSystem:HatchEgg(eggItemId: string): OwnedPet?
         defId         = chosenDef.id,
         name          = chosenDef.name,
         rarity        = chosenRarity,
+        ownerId       = 0,
         stage         = "newborn",
         xp            = 0,
         mood          = "happy",
@@ -759,6 +766,41 @@ function PetSystem:UpdateMood(dt: number)
         pet.fun    = _clamp01(pet.fun    - decay)
         self:_reevaluateMood(pet)
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Ownership helpers (used by TradeRemoteHandler and TradeCoordinator)
+-- ---------------------------------------------------------------------------
+
+-- Returns true if the given player (userId) is the recorded owner of this pet.
+-- In a single-player-per-system deployment, ownerId defaults to 0.
+-- In a shared system (all players' pets in one PetSystem), call HatchEgg
+-- then set pet.ownerId before the player data is returned.
+function PetSystem:OwnsPet(ownerId: number, instanceId: string): boolean
+    local pet = self._ownedPets[instanceId]
+    return pet ~= nil and pet.ownerId == ownerId
+end
+
+-- Transfers ownership of the pet to newOwnerId. Emits PetOwnershipTransferred.
+-- Returns false if the pet doesn't exist.
+-- Same-owner transfer is a no-op (returns true, no event).
+function PetSystem:TransferOwnership(instanceId: string, newOwnerId: number): boolean
+    local pet = self._ownedPets[instanceId]
+    if not pet then
+        warn("[PetSystem] TransferOwnership: pet '" .. instanceId .. "' not found")
+        return false
+    end
+    if pet.ownerId == newOwnerId then
+        return true  -- no-op, correct state already
+    end
+    local previousOwnerId = pet.ownerId
+    pet.ownerId = newOwnerId
+    self._eventBus:Emit("PetOwnershipTransferred", {
+        instanceId      = instanceId,
+        previousOwnerId = previousOwnerId,
+        newOwnerId      = newOwnerId,
+    })
+    return true
 end
 
 -- ---------------------------------------------------------------------------

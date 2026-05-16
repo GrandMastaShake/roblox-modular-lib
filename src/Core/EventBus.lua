@@ -51,7 +51,10 @@ function EventBus:Emit(eventName: string, payload: any)
 		-- Copy list to avoid mutation issues if callbacks subscribe/unsubscribe
 		local copy = table.clone(list)
 		for _, callback in ipairs(copy) do
-			pcall(callback, payload)
+			local ok, err = pcall(callback, payload)
+			if not ok then
+				warn("[EventBus] Error in '" .. eventName .. "' subscriber: " .. tostring(err))
+			end
 		end
 	end
 end

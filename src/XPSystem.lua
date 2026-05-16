@@ -2,7 +2,8 @@
 -- XPSystem.lua
 -- XP, leveling, and progression bar system.
 
-local TweenService = game:GetService("TweenService")
+local RunService  = game:GetService("RunService")
+local TweenService: TweenService? = if RunService:IsServer() then nil else game:GetService("TweenService")
 
 local EventBus = require(script.Parent.Core.EventBus)
 local Config = require(script.Parent.Core.Config)
@@ -104,6 +105,7 @@ end
 function XPSystem:_updateXPBar()
 	local bar = self._xpBar
 	if not bar then return end
+	if not TweenService then return end  -- no-op on the server
 
 	local progress = self:GetProgress()
 	local targetSize = UDim2.new(progress, 0, bar.Size.Y.Scale, bar.Size.Y.Offset)

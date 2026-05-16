@@ -256,6 +256,14 @@ function TradeRemoteHandler:_wireHandlers()
 			self:_onTradeCancel(player, tradeId)
 		end))
 	end
+
+		-- Cancel any active trade when a player disconnects.
+		table.insert(self._connections, Players.PlayerRemoving:Connect(function(player)
+			local tradeId = self._deps.trades:GetActiveTradeFor(tostring(player.UserId))
+			if tradeId then
+				self._deps.trades:CancelTrade(tradeId, nil)
+			end
+		end))
 end
 
 function TradeRemoteHandler:_onTradeRequest(player: Player, targetUserId: any)
@@ -272,7 +280,7 @@ function TradeRemoteHandler:_onTradeRequest(player: Player, targetUserId: any)
 	if not Players:GetPlayerByUserId(targetUserId) then
 		return self:_reject(uid, "TradeRequest", "target_offline")
 	end
-	local tradeId = self._deps.trades:Propose(uid, targetUserId)
+	local tradeId = self._deps.trades:RequestTrade(tostring(uid), tostring(targetUserId))
 	if not tradeId then
 		return self:_reject(uid, "TradeRequest", "propose_failed")
 	end
@@ -287,7 +295,7 @@ function TradeRemoteHandler:_onTradeAccept(player: Player, tradeId: any)
 	if not self:_checkRate(uid, "TradeAccept") then
 		return self:_reject(uid, "TradeAccept", "rate_limited")
 	end
-	if not self._deps.trades:Accept(tradeId, uid) then
+	if not self._deps.trades:AcceptTrade(tradeId, tostring(uid)) then
 		return self:_reject(uid, "TradeAccept", "accept_failed")
 	end
 	self:_accept(uid, "TradeAccept")
@@ -307,7 +315,7 @@ function TradeRemoteHandler:_onTradeAddPet(player: Player, tradeId: any, petId: 
 	if not self._deps.pets:OwnsPet(uid, petId) then
 		return self:_reject(uid, "TradeAddPet", "not_owner")
 	end
-	if not self._deps.trades:AddPet(tradeId, uid, petId) then
+	if not self._deps.trades:AddItem(tradeId, tostring(uid), petId, 1) then
 		return self:_reject(uid, "TradeAddPet", "add_failed")
 	end
 	self:_accept(uid, "TradeAddPet")
@@ -321,7 +329,7 @@ function TradeRemoteHandler:_onTradeRemovePet(player: Player, tradeId: any, petI
 	if not isSafeId(tradeId) or not isSafeId(petId) then
 		return self:_reject(uid, "TradeRemovePet", "bad_id")
 	end
-	if not self._deps.trades:RemovePet(tradeId, uid, petId) then
+	if not self._deps.trades:RemoveItem(tradeId, tostring(uid), petId) then
 		return self:_reject(uid, "TradeRemovePet", "remove_failed")
 	end
 	self:_accept(uid, "TradeRemovePet")
@@ -342,7 +350,7 @@ function TradeRemoteHandler:_onTradeAddItem(player: Player, tradeId: any, itemId
 		and not self._deps.inventory:IsItemTradeable(itemId) then
 		return self:_reject(uid, "TradeAddItem", "soulbound")
 	end
-	if not self._deps.trades:AddItem(tradeId, uid, itemId, quantity) then
+	if not self._deps.trades:AddItem(tradeId, tostring(uid), itemId, quantity) then
 		return self:_reject(uid, "TradeAddItem", "add_failed")
 	end
 	self:_accept(uid, "TradeAddItem")
@@ -360,7 +368,7 @@ function TradeRemoteHandler:_onTradeRemoveItem(player: Player, tradeId: any, ite
 	if quantity ~= nil and not isPositiveInt(quantity) then
 		return self:_reject(uid, "TradeRemoveItem", "bad_quantity")
 	end
-	if not self._deps.trades:RemoveItem(tradeId, uid, itemId, quantity) then
+	if not self._deps.trades:RemoveItem(tradeId, tostring(uid), itemId, quantity) then
 		return self:_reject(uid, "TradeRemoveItem", "remove_failed")
 	end
 	self:_accept(uid, "TradeRemoveItem")
@@ -377,8 +385,13 @@ function TradeRemoteHandler:_onTradeSetReady(player: Player, tradeId: any, ready
 	if typeof(ready) ~= "boolean" then
 		return self:_reject(uid, "TradeSetReady", "bad_ready_type")
 	end
-	if not self._deps.trades:SetReady(tradeId, uid, ready) then
-		return self:_reject(uid, "TradeSetReady", "set_ready_failed")
+	if ready then
+		if not self._deps.trades:AcceptTrade(tradeId, tostring(uid)) then
+			return self:_reject(uid, "TradeSetReady", "set_ready_failed")
+		end
+	else
+		-- "unready" = cancel the trade
+		self._deps.trades:CancelTrade(tradeId, tostring(uid))
 	end
 	self:_accept(uid, "TradeSetReady")
 end
@@ -394,8 +407,12 @@ function TradeRemoteHandler:_onTradeConfirm(player: Player, tradeId: any, confir
 	if typeof(confirmed) ~= "boolean" then
 		return self:_reject(uid, "TradeConfirm", "bad_confirmed_type")
 	end
-	if not self._deps.trades:Confirm(tradeId, uid, confirmed) then
-		return self:_reject(uid, "TradeConfirm", "confirm_failed")
+	if confirmed then
+		if not self._deps.trades:ConfirmTrade(tradeId, tostring(uid)) then
+			return self:_reject(uid, "TradeConfirm", "confirm_failed")
+		end
+	else
+		self._deps.trades:CancelTrade(tradeId, tostring(uid))
 	end
 	self:_accept(uid, "TradeConfirm")
 end
@@ -408,7 +425,7 @@ function TradeRemoteHandler:_onTradeCancel(player: Player, tradeId: any)
 	if not isSafeId(tradeId) then
 		return self:_reject(uid, "TradeCancel", "bad_trade_id")
 	end
-	if not self._deps.trades:Cancel(tradeId, uid) then
+	if not self._deps.trades:CancelTrade(tradeId, tostring(uid)) then
 		return self:_reject(uid, "TradeCancel", "cancel_failed")
 	end
 	self:_accept(uid, "TradeCancel")

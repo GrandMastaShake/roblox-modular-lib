@@ -8,6 +8,8 @@ local Config = require(script.Parent.Core.Config)
 local CurrencySystem = {}
 CurrencySystem.__index = CurrencySystem
 
+local MAX_BALANCE = 2^53  -- largest safe integer in a Luau float
+
 export type CurrencyDef = {
 	id: string,
 	name: string,
@@ -66,7 +68,7 @@ function CurrencySystem:Add(currencyId: string, amount: number, reason: string?)
 	if not def then return false end
 
 	local oldBalance = self._balances[currencyId]
-	self._balances[currencyId] = oldBalance + amount
+	self._balances[currencyId] = math.min(oldBalance + amount, MAX_BALANCE)
 
 	self._eventBus:Emit("CurrencyAdded", {
 		currencyId = currencyId,

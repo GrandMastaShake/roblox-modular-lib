@@ -10,7 +10,7 @@ In your project's `wally.toml`:
 
 ```toml
 [dependencies]
-modular-lib = "roblox-modular-lib@1.0.0"
+modular-lib = "roblox-modular-lib@1.3.0"
 ```
 
 ## 2. Install

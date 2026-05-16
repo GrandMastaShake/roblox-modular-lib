@@ -121,6 +121,11 @@ function Inventory:RemoveItem(itemId: string, quantity: number?): boolean
 		return false
 	end
 
+	-- Pre-check: verify sufficient quantity before touching any slot.
+	if self:GetItemQuantity(itemId) < qty then
+		return false
+	end
+
 	local remaining = qty
 	local indicesToCheck = {}
 	for i = 1, self._maxSlots do

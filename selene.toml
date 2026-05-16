@@ -1,0 +1,11 @@
+# selene.toml — Selene linter configuration for roblox-modular-lib
+# Run: selene src/
+
+[config]
+standard_library = "roblox"
+
+[rules]
+incorrect_standard_library_use = "deny"
+shadowing           = "warn"
+unbalanced_assignments = "warn"
+unused_variable     = "warn"

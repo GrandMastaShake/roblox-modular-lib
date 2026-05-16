@@ -81,6 +81,7 @@ export type TradeSystem = {
     -- Internals
     _eventBus:      EventBus,
     _inventory:     Inventory,
+    _inventoryMap:  { [string]: Inventory }?,  -- optional per-player map
     _currency:      CurrencySystem,
     _timer:         TimerSystem,
     _trades:        { [string]: Trade },
@@ -242,7 +243,7 @@ function TradeSystem:AddItem(tradeId: string, playerId: string, itemId: string, 
     if existingIdx > 0 then
         alreadyOffered = offer.items[existingIdx].quantity
     end
-    if not self:_playerHasItem(itemId, alreadyOffered + quantity) then
+    if not self:_playerHasItem(playerId, itemId, alreadyOffered + quantity) then
         warn("[TradeSystem] Player '" .. playerId .. "' cannot offer " .. itemId .. " x" .. tostring(alreadyOffered + quantity) .. " (insufficient inventory)")
         return false
     end
@@ -484,8 +485,8 @@ function TradeSystem:_executeTrade(tradeId: string)
     if not trade or trade.state ~= "confirmed" then return end
 
     -- Re-validate both offers before moving anything
-    local okA = self:_validateOffer(trade.offerA)
-    local okB = self:_validateOffer(trade.offerB)
+    local okA = self:_validateOffer(trade.offerA, trade.playerA)
+    local okB = self:_validateOffer(trade.offerB, trade.playerB)
 
     if not okA or not okB then
         trade.state = "cancelled"
@@ -525,14 +526,14 @@ function TradeSystem:_executeTrade(tradeId: string)
     })
 end
 
-function TradeSystem:_validateOffer(offer: TradeOffer): boolean
+function TradeSystem:_validateOffer(offer: TradeOffer, playerId: string): boolean
     if offer.bucks > 0 then
         if not self._currency:CanAfford(BUCKS_CURRENCY_ID, offer.bucks) then
             return false
         end
     end
     for _, slot in ipairs(offer.items) do
-        if not self:_playerHasItem(slot.itemId, slot.quantity) then
+        if not self:_playerHasItem(playerId, slot.itemId, slot.quantity) then
             return false
         end
     end
@@ -557,8 +558,15 @@ function TradeSystem:_grantOffer(offer: TradeOffer, playerId: string)
     end
 end
 
-function TradeSystem:_playerHasItem(itemId: string, quantity: number): boolean
-    local slots = self._inventory:GetAllSlots()
+-- NOTE: In a single-player deployment the injected inventory belongs to
+-- one player so playerId is informational only. In a multi-player setup
+-- inject per-player inventories via _inventoryMap = { [playerId]: Inventory }.
+function TradeSystem:_playerHasItem(playerId: string, itemId: string, quantity: number): boolean
+    local inv = (self._inventoryMap and self._inventoryMap[playerId]) or self._inventory
+    if inv.GetItemQuantity then
+        return inv:GetItemQuantity(itemId) >= quantity
+    end
+    local slots = inv:GetAllSlots()
     local total = 0
     for _, slot in ipairs(slots) do
         if slot.itemId == itemId then
