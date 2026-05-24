@@ -1,0 +1,15 @@
+{
+  "name": "FashionistaPetGame",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "src": {
+        "$path": "src"
+      },
+      "PetGame": {
+        "$path": "PetGame.server.lua"
+      }
+    }
+  }
+}

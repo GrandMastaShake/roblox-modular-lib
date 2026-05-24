@@ -165,6 +165,174 @@ local trades       = TradeSystem.new(bus, inv, currency, timers)
 local animator    = PetAnimator.new(bus, config)
 
 -- ============================================================================
+-- 2b. IN-WORLD PET MODEL MANAGEMENT
+-- ============================================================================
+-- Spawns coloured-sphere placeholder models when pets enter/leave the world.
+-- No uploaded assets required — built entirely from Roblox Parts in code.
+-- Each pet is a chibi-proportioned Model:
+--   head sphere (PrimaryPart) + body sphere + two big eyes
+--   + AnimationController/Animator + Animations folder (placeholder IDs)
+--   + BillboardGui name tag
+-- PetAnimator picks up the model via RegisterPetModel; the placeholder
+-- Animation instances cause no crash — PetAnimator skips missing tracks.
+-- Adopt Me Design Law enforced: COLOR = RARITY.
+
+local PET_DISPLAY: { [string]: { colour: Color3, scale: number } } = {
+	fennec_fox       = { colour = Color3.fromRGB(255, 160, 60),  scale = 1.2 },  -- orange  / common
+	jungle_panther   = { colour = Color3.fromRGB(30,  180, 120), scale = 1.5 },  -- teal    / rare
+	shadow_dragon_pg = { colour = Color3.fromRGB(120,  40, 200), scale = 1.8 },  -- purple  / legendary
+}
+
+-- petId (instanceId) -> Model.  Populated on spawn; nil'd on destroy.
+local _petModels: { [string]: Model } = {}
+
+local function buildPetModel(defId: string, displayName: string): Model
+	local d      = PET_DISPLAY[defId] or { colour = Color3.fromRGB(200, 200, 200), scale = 1.2 }
+	local s      = d.scale    -- uniform scale (head radius = s studs)
+	local colour = d.colour
+
+	local model       = Instance.new("Model")
+	model.Name        = displayName
+
+	-- HEAD (Primary Part, r = s)
+	local head        = Instance.new("Part")
+	head.Name         = "Head"
+	head.Shape        = Enum.PartType.Ball
+	head.Size         = Vector3.new(s * 2, s * 2, s * 2)
+	head.Color        = colour
+	head.Material     = Enum.Material.SmoothPlastic
+	head.CanCollide   = false
+	head.Anchored     = false
+	head.CFrame       = CFrame.new(0, s, 0)
+	head.Parent       = model
+	model.PrimaryPart = head
+
+	-- BODY (r = s * 0.62, no neck gap — clips into head slightly)
+	local bR     = s * 0.62
+	local body   = Instance.new("Part")
+	body.Name        = "Body"
+	body.Shape       = Enum.PartType.Ball
+	body.Size        = Vector3.new(bR * 2, bR * 2, bR * 2)
+	body.Color       = colour
+	body.Material    = Enum.Material.SmoothPlastic
+	body.CanCollide  = false
+	body.Anchored    = false
+	body.CFrame      = CFrame.new(0, s - (s + bR * 0.75), 0)
+	body.Parent      = model
+	local bw         = Instance.new("WeldConstraint")
+	bw.Part0         = head
+	bw.Part1         = body
+	bw.Parent        = head
+
+	-- EYES (sclera r = s*0.21, pupils r = s*0.11 — Adopt Me big-eye rule)
+	local eyeR = s * 0.21
+	for i, sign in ipairs({ -1, 1 }) do
+		local ePos   = Vector3.new(sign * s * 0.28, s * 1.1, -(s * 0.92))
+
+		local white          = Instance.new("Part")
+		white.Name           = "EyeWhite" .. i
+		white.Shape          = Enum.PartType.Ball
+		white.Size           = Vector3.new(eyeR * 2, eyeR * 2, eyeR * 2)
+		white.Color          = Color3.fromRGB(240, 240, 240)
+		white.Material       = Enum.Material.SmoothPlastic
+		white.CanCollide     = false
+		white.Anchored       = false
+		white.CFrame         = CFrame.new(ePos)
+		white.Parent         = model
+		local ew             = Instance.new("WeldConstraint")
+		ew.Part0             = head
+		ew.Part1             = white
+		ew.Parent            = head
+
+		local pupil          = Instance.new("Part")
+		pupil.Name           = "Pupil" .. i
+		pupil.Shape          = Enum.PartType.Ball
+		pupil.Size           = Vector3.new(eyeR, eyeR, eyeR)
+		pupil.Color          = Color3.fromRGB(20, 20, 20)
+		pupil.Material       = Enum.Material.SmoothPlastic
+		pupil.CanCollide     = false
+		pupil.Anchored       = false
+		pupil.CFrame         = CFrame.new(ePos + Vector3.new(0, 0, -eyeR * 0.35))
+		pupil.Parent         = model
+		local pw             = Instance.new("WeldConstraint")
+		pw.Part0             = head
+		pw.Part1             = pupil
+		pw.Parent            = head
+	end
+
+	-- ANIMATION CONTROLLER + ANIMATOR (required by PetAnimator)
+	local ac   = Instance.new("AnimationController")
+	ac.Parent  = model
+	local anim = Instance.new("Animator")
+	anim.Parent = ac
+
+	-- ANIMATIONS FOLDER — placeholder IDs so PetAnimator loads without error
+	local af        = Instance.new("Folder")
+	af.Name         = "Animations"
+	af.Parent       = model
+	for _, name in ipairs({ "idle", "walk", "run", "sit", "sleep", "jump", "eat", "play" }) do
+		local a        = Instance.new("Animation")
+		a.Name         = name
+		a.AnimationId  = "rbxassetid://0"
+		a.Parent       = af
+	end
+
+	-- BILLBOARD NAME TAG
+	local bb                 = Instance.new("BillboardGui")
+	bb.Name                  = "NameTag"
+	bb.Size                  = UDim2.new(0, 130, 0, 28)
+	bb.StudsOffset           = Vector3.new(0, s + 0.6, 0)
+	bb.AlwaysOnTop           = false
+	bb.Adornee               = head
+	bb.ResetOnSpawn          = false
+	bb.Parent                = model
+	local lbl                = Instance.new("TextLabel")
+	lbl.Text                 = displayName
+	lbl.Size                 = UDim2.fromScale(1, 1)
+	lbl.BackgroundTransparency = 1
+	lbl.TextColor3           = Color3.fromRGB(255, 255, 255)
+	lbl.TextStrokeTransparency = 0.5
+	lbl.Font                 = Enum.Font.GothamBold
+	lbl.TextScaled           = true
+	lbl.Parent               = bb
+
+	return model
+end
+
+-- Move a pet model into Workspace at the given CFrame.
+local function spawnPetModel(petId: string, defId: string, displayName: string, spawnCF: CFrame)
+	local model = _petModels[petId]
+	if not model then
+		model = buildPetModel(defId, displayName)
+		_petModels[petId] = model
+	end
+	model.Parent = workspace
+	if model.PrimaryPart then
+		model:SetPrimaryPartCFrame(spawnCF)
+	end
+	animator:RegisterPetModel(petId, model)
+end
+
+-- Pull a pet model out of the world without destroying it (re-use on next spawn).
+local function despawnPetModel(petId: string)
+	animator:UnregisterPetModel(petId)
+	local model = _petModels[petId]
+	if model then
+		model.Parent = nil
+	end
+end
+
+-- Fully destroy — called on PetReleased.
+local function destroyPetModel(petId: string)
+	despawnPetModel(petId)
+	local model = _petModels[petId]
+	if model then
+		model:Destroy()
+		_petModels[petId] = nil
+	end
+end
+
+-- ============================================================================
 -- 3. STARTER CONTENT
 -- ============================================================================
 -- Species, items, currencies, quests, leaderboards. In a production game
@@ -383,15 +551,68 @@ bus:Subscribe("CurrencyBalanceChanged", function(data)
 end)
 
 -- ----- Following / Pen state changes ----------------------------------------
--- Real game: spawn/despawn pet models in the world here.
+-- Spawn / despawn chibi-sphere models as pets enter or leave the world.
 bus:Subscribe("PetFollowingChanged", function(data)
-	print(("[PetGame] Player %d now has %d pet(s) following")
-		:format(data.ownerId, #data.followingPetIds))
+	-- Build the new "should be out" set.
+	local nowFollowing: { [string]: boolean } = {}
+	for _, petId in ipairs(data.followingPetIds) do
+		nowFollowing[petId] = true
+	end
+
+	-- Spawn any pet that should be following but hasn't got a model yet.
+	for idx, petId in ipairs(data.followingPetIds) do
+		if not animator:IsRegistered(petId) then
+			local pet   = pets:GetPet(petId)
+			local defId = if pet then pet.defId  else ""
+			local name  = if pet then pet.name   else petId
+
+			local player  = Players:GetPlayerByUserId(data.ownerId)
+			local char    = player and player.Character
+			local rootPart: BasePart? = nil
+			if char then
+				rootPart = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			end
+			local origin = if rootPart then rootPart.Position else Vector3.new(0, 5, 0)
+			-- Offset each following pet so they don't stack.
+			local offset = Vector3.new((idx - 1) * 3 - 1.5, 3, 2.5)
+			spawnPetModel(petId, defId, name, CFrame.new(origin + offset))
+		end
+	end
+
+	-- Despawn pets that are no longer following.
+	for petId in pairs(_petModels) do
+		if not nowFollowing[petId] and animator:IsRegistered(petId) then
+			despawnPetModel(petId)
+		end
+	end
+
+	print(("[PetGame] Player %d: %d pet(s) following"):format(data.ownerId, #data.followingPetIds))
 end)
 
 bus:Subscribe("PetPenChanged", function(data)
-	print(("[PetGame] Player %d pen contains %d pet(s)")
-		:format(data.ownerId, #data.penPetIds))
+	-- Pen pets appear near a fixed "pen" corner of the map.
+	local penOrigin = Vector3.new(12, 3, 12)
+
+	local inPen: { [string]: boolean } = {}
+	for i, petId in ipairs(data.penPetIds) do
+		inPen[petId] = true
+		if not animator:IsRegistered(petId) then
+			local pet    = pets:GetPet(petId)
+			local defId  = if pet then pet.defId else ""
+			local name   = if pet then pet.name  else petId
+			local offset = Vector3.new((i - 1) * 3.5, 0, 0)
+			spawnPetModel(petId, defId, name, CFrame.new(penOrigin + offset))
+		end
+	end
+
+	-- Despawn models that left the pen.
+	for petId in pairs(_petModels) do
+		if not inPen[petId] and animator:IsRegistered(petId) then
+			despawnPetModel(petId)
+		end
+	end
+
+	print(("[PetGame] Player %d: %d pet(s) in pen"):format(data.ownerId, #data.penPetIds))
 end)
 
 -- ----- Trade lifecycle -------------------------------------------------------
@@ -421,6 +642,12 @@ end)
 bus:Subscribe("TradeCancelled", function(data)
 	local reason = data.reason == "timeout" and "timed out" or "was cancelled"
 	notifs:Show("warning", "Trade " .. reason, "No items changed hands.", 4)
+end)
+
+-- ----- Pet released ----------------------------------------------------------
+bus:Subscribe("PetReleased", function(data)
+	destroyPetModel(data.petId)
+	notifs:Show("warning", "Pet released", "Your pet returned to the wild. 🌿", 3)
 end)
 
 -- ============================================================================
