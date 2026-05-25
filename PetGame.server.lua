@@ -44,6 +44,16 @@
 local Players       = game:GetService("Players")
 local RunService    = game:GetService("RunService")
 
+-- ============================================================================
+-- TERRAIN GUARD
+-- ============================================================================
+-- ExampleWorld.server.lua (the terrain pipeline demo) generates a large
+-- procedural world. If the .rbxlx file was ever opened with the wrong project
+-- json that included that script, the terrain is now baked into the save file.
+-- This one-liner clears it before Play starts so the demo always runs on a
+-- clean flat baseplate.
+workspace.Terrain:Clear()
+
 -- Core services
 local EventBus      = require(script.Parent.src.Core.EventBus)
 local Config        = require(script.Parent.src.Core.Config)
@@ -737,11 +747,51 @@ local function setupPlayer(player: Player)
 		notifs:Show(
 			"info",
 			"Welcome!",
-			"You got a Starter Egg, food, a toy, and a bed. Tap your inventory to hatch!",
-			6
+			"You got a Starter Egg! Your pet is hatching…",
+			5
 		)
+
+		-- Demo auto-hatch: hatch the egg and set the pet following automatically
+		-- after a short delay (so the player character has time to load in).
+		-- In production you'd wait for the player to tap their inventory.
+		task.delay(2.5, function()
+			if not player.Parent then return end  -- player left early
+
+			local pet = pets:HatchEgg("starter_egg")
+			if not pet then
+				warn("[PetGame] Auto-hatch failed for " .. player.Name)
+				return
+			end
+
+			-- Emit PetFollowingChanged to trigger spawnPetModel for this pet.
+			-- (PetSystem does not track following state — the composition root owns it.)
+			bus:Emit("PetFollowingChanged", {
+				ownerId       = player.UserId,
+				followingPetIds = { pet.instanceId },
+			})
+
+			notifs:Show(
+				"success",
+				string.format("Your %s hatched!", pet.name),
+				string.format("'%s' is following you! 🐾", pet.name),
+				5
+			)
+		end)
 	else
 		notifs:Show("info", "Welcome back!", "Your pets missed you. 🐾", 4)
+
+		-- Re-emit following state for any pets that were following at save time.
+		-- (Following state isn't saved — just put the first owned pet back out.)
+		task.delay(1.5, function()
+			if not player.Parent then return end
+			local allPets = pets:GetAllPets()
+			if #allPets > 0 then
+				bus:Emit("PetFollowingChanged", {
+					ownerId         = player.UserId,
+					followingPetIds = { allPets[1].instanceId },
+				})
+			end
+		end)
 	end
 
 	-- 6c. Activate today's daily quests if not already done.
